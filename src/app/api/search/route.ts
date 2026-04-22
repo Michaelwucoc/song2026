@@ -68,34 +68,73 @@ async function searchViaMiddleware(
 }
 
 async function searchDirect(keyword: string): Promise<NormalizedSong[] | null> {
-  const url = new URL("https://music.163.com/api/search/get/web");
-  url.searchParams.set("s", keyword);
-  url.searchParams.set("type", "1");
-  url.searchParams.set("offset", "0");
-  url.searchParams.set("limit", "20");
+  const body = new URLSearchParams({
+    s: keyword,
+    type: "1",
+    offset: "0",
+    limit: "20",
+  }).toString();
 
-  const res = await fetch(url.toString(), {
-    method: "GET",
+  const res = await fetch("https://music.163.com/api/search/get/", {
+    method: "POST",
     headers: {
       Accept: "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
       "User-Agent":
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
       Referer: "https://music.163.com/",
+      Cookie: "appver=2.0.2; os=pc; osver=10;",
     },
+    body,
     cache: "no-store",
   });
   if (!res.ok) return null;
   const data = (await res.json()) as NeteaseDirectResponse;
-  return (
-    data.result?.songs?.map((s) => ({
-      platform: "netease" as const,
-      platformSongId: String(s.id),
-      title: s.name,
-      artist: (s.artists ?? []).map((a) => a.name).join(", "),
-      album: s.album?.name ?? "",
-      coverUrl: toHttps(s.album?.picUrl ?? ""),
-    })) ?? []
-  );
+  const songs = data.result?.songs ?? [];
+  if (songs.length === 0) return null;
+  return songs.map((s) => ({
+    platform: "netease" as const,
+    platformSongId: String(s.id),
+    title: s.name,
+    artist: (s.artists ?? []).map((a) => a.name).join(", "),
+    album: s.album?.name ?? "",
+    coverUrl: toHttps(s.album?.picUrl ?? ""),
+  }));
+}
+
+async function searchDirectCloud(keyword: string): Promise<NormalizedSong[] | null> {
+  const body = new URLSearchParams({
+    s: keyword,
+    type: "1",
+    offset: "0",
+    limit: "20",
+  }).toString();
+
+  const res = await fetch("https://music.163.com/api/cloudsearch/pc", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
+      Referer: "https://music.163.com/",
+      Cookie: "appver=2.0.2; os=pc; osver=10;",
+    },
+    body,
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as NeteaseMiddlewareResponse;
+  const songs = data.result?.songs ?? [];
+  if (songs.length === 0) return null;
+  return songs.map((s) => ({
+    platform: "netease" as const,
+    platformSongId: String(s.id),
+    title: s.name,
+    artist: (s.ar ?? []).map((a) => a.name).join(", "),
+    album: s.al?.name ?? "",
+    coverUrl: toHttps(s.al?.picUrl ?? ""),
+  }));
 }
 
 type NeteaseSongDetailResponse = {
@@ -155,11 +194,19 @@ export async function GET(req: Request) {
   try {
     if (baseUrl) {
       const songs = await searchViaMiddleware(baseUrl, keyword);
-      if (songs) return NextResponse.json({ songs: await enrichCovers(songs) });
+      if (songs && songs.length > 0) {
+        return NextResponse.json({ songs: await enrichCovers(songs) });
+      }
+    }
+    const cloud = await searchDirectCloud(keyword);
+    if (cloud && cloud.length > 0) {
+      return NextResponse.json({ songs: await enrichCovers(cloud) });
     }
     const direct = await searchDirect(keyword);
-    if (direct) return NextResponse.json({ songs: await enrichCovers(direct) });
-    return NextResponse.json({ error: "netease_api_failed" }, { status: 502 });
+    if (direct && direct.length > 0) {
+      return NextResponse.json({ songs: await enrichCovers(direct) });
+    }
+    return NextResponse.json({ songs: [], warning: "netease_empty_result" });
   } catch {
     return NextResponse.json(
       { error: "netease_api_unreachable" },
