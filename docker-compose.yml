@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: song2026
+      POSTGRES_USER: song
+      POSTGRES_PASSWORD: song
+    ports:
+      - "5432:5432"
+    volumes:
+      - song2026_pg:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+  netease_api:
+    image: binaryify/netease_cloud_music_api:latest
+    ports:
+      - "3001:3000"
+    environment:
+      NCM_USE_LOCAL_AUTH: "false"
+
+volumes:
+  song2026_pg:
+

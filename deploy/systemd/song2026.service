@@ -1,0 +1,20 @@
+[Unit]
+Description=song2026 (Next.js)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/song2026
+EnvironmentFile=/opt/song2026/.env.local
+ExecStart=/opt/song2026/scripts/server-start.sh
+Restart=always
+RestartSec=3
+
+# Security hardening (safe defaults)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
