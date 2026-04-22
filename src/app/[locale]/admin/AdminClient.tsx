@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useT } from "@/i18n/I18nContext";
 
 type Song = {
@@ -48,7 +48,7 @@ export function AdminClient({ locale }: { locale: string }) {
       }
       setIsAuthed(true);
       setPassword("");
-      // Keep it explicit: user clicks "刷新" to load queue.
+      void loadQueue();
     } catch {
       setIsAuthed(false);
       setLoginError("network_error");
@@ -64,12 +64,17 @@ export function AdminClient({ locale }: { locale: string }) {
     setPlayed([]);
   }
 
-  async function loadQueue() {
+  const loadQueue = useCallback(async () => {
     setLoadingQueue(true);
     setQueueError(null);
     try {
-      const res = await fetch("/api/requests?scope=admin", { method: "GET" });
-      const json = (await res.json()) as { queued?: RequestItem[]; played?: RequestItem[] } | { error: string };
+      const res = await fetch("/api/requests?scope=admin", {
+        method: "GET",
+        cache: "no-store",
+      });
+      const json = (await res.json()) as
+        | { queued?: RequestItem[]; played?: RequestItem[] }
+        | { error: string };
       if (!res.ok) {
         setQueued([]);
         setPlayed([]);
@@ -91,7 +96,16 @@ export function AdminClient({ locale }: { locale: string }) {
     } finally {
       setLoadingQueue(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthed) return;
+    void loadQueue();
+    const id = window.setInterval(() => {
+      void loadQueue();
+    }, 10000);
+    return () => window.clearInterval(id);
+  }, [isAuthed, loadQueue]);
 
   async function act(id: string, action: "remove" | "play") {
     await fetch(`/api/requests/${id}/${action}`, { method: "POST" }).catch(

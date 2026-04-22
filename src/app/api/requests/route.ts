@@ -76,65 +76,38 @@ export async function GET(req: Request) {
     });
   }
 
-  if (scope === "admin") {
-    const isAdmin = await verifyAdminSession();
-    if (!isAdmin) {
-      return NextResponse.json({ error: "access_denied" }, { status: 403 });
-    }
-
-    const [queued, played] = await Promise.all([
-      prisma.request.findMany({
-        where: { status: "queued" },
-        orderBy: { createdAt: "asc" },
-        take: 200,
-        include: { song: true, user: true },
-      }),
-      prisma.request.findMany({
-        where: { status: "played" },
-        orderBy: { createdAt: "desc" },
-        take: 200,
-        include: { song: true, user: true },
-      }),
-    ]);
-
-    return NextResponse.json({
-      queued: queued.map((r) => ({
-        id: r.id,
-        status: r.status,
-        createdAt: r.createdAt,
-        user: { id: r.userId, role: r.user.role, name: r.user.name ?? null },
-        song: r.song,
-      })),
-      played: played.map((r) => ({
-        id: r.id,
-        status: r.status,
-        createdAt: r.createdAt,
-        user: { id: r.userId, role: r.user.role, name: r.user.name ?? null },
-        song: r.song,
-      })),
-    });
-  }
-
   const isAdmin = await verifyAdminSession();
   if (!isAdmin) {
     return NextResponse.json({ error: "access_denied" }, { status: 403 });
   }
 
-  const requests = await prisma.request.findMany({
-    where: { status: "queued" },
-    orderBy: { createdAt: "asc" },
-    take: 200,
-    include: { song: true, user: true },
+  const [queuedAll, playedAll] = await Promise.all([
+    prisma.request.findMany({
+      where: { status: "queued" },
+      orderBy: { createdAt: "asc" },
+      take: 200,
+      include: { song: true, user: true },
+    }),
+    prisma.request.findMany({
+      where: { status: "played" },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      include: { song: true, user: true },
+    }),
+  ]);
+
+  const mapAdmin = (r: (typeof queuedAll)[number]) => ({
+    id: r.id,
+    status: r.status,
+    createdAt: r.createdAt,
+    user: { id: r.userId, role: r.user.role, name: r.user.name ?? null },
+    song: r.song,
   });
 
   return NextResponse.json({
-    requests: requests.map((r) => ({
-      id: r.id,
-      status: r.status,
-      createdAt: r.createdAt,
-      user: { id: r.userId, role: r.user.role, name: r.user.name ?? null },
-      song: r.song,
-    })),
+    queued: queuedAll.map(mapAdmin),
+    played: playedAll.map(mapAdmin),
+    requests: queuedAll.map(mapAdmin),
   });
 }
 
