@@ -12,6 +12,7 @@ type Song = {
 
 type RequestItem = {
   id: string;
+  status?: string;
   createdAt: string;
   song: Song;
   user?: { id: string; role: string; name?: string | null };
@@ -26,7 +27,9 @@ export function AdminClient({ locale }: { locale: string }) {
 
   const [loadingQueue, setLoadingQueue] = useState(false);
   const [queueError, setQueueError] = useState<string | null>(null);
-  const [requests, setRequests] = useState<RequestItem[]>([]);
+  const [queued, setQueued] = useState<RequestItem[]>([]);
+  const [played, setPlayed] = useState<RequestItem[]>([]);
+  const [clearingPlayed, setClearingPlayed] = useState(false);
 
   async function login() {
     setLoggingIn(true);
@@ -57,26 +60,33 @@ export function AdminClient({ locale }: { locale: string }) {
   async function logout() {
     await fetch("/api/admin/logout", { method: "POST" }).catch(() => undefined);
     setIsAuthed(false);
-    setRequests([]);
+    setQueued([]);
+    setPlayed([]);
   }
 
   async function loadQueue() {
     setLoadingQueue(true);
     setQueueError(null);
     try {
-      const res = await fetch("/api/requests?scope=all", { method: "GET" });
-      const json = (await res.json()) as
-        | { requests: RequestItem[] }
-        | { error: string };
+      const res = await fetch("/api/requests?scope=admin", { method: "GET" });
+      const json = (await res.json()) as { queued?: RequestItem[]; played?: RequestItem[] } | { error: string };
       if (!res.ok) {
-        setRequests([]);
+        setQueued([]);
+        setPlayed([]);
         setQueueError("error" in json ? json.error : "load_failed");
         if ("error" in json && json.error === "access_denied") setIsAuthed(false);
         return;
       }
-      setRequests("requests" in json ? json.requests : []);
+      if ("queued" in json || "played" in json) {
+        setQueued(json.queued ?? []);
+        setPlayed(json.played ?? []);
+      } else {
+        setQueued([]);
+        setPlayed([]);
+      }
     } catch {
-      setRequests([]);
+      setQueued([]);
+      setPlayed([]);
       setQueueError("network_error");
     } finally {
       setLoadingQueue(false);
@@ -88,6 +98,17 @@ export function AdminClient({ locale }: { locale: string }) {
       () => undefined,
     );
     await loadQueue();
+  }
+
+  async function clearPlayed() {
+    if (!isAuthed) return;
+    setClearingPlayed(true);
+    try {
+      await fetch("/api/requests/played/clear", { method: "POST" }).catch(() => undefined);
+    } finally {
+      setClearingPlayed(false);
+      await loadQueue();
+    }
   }
 
   return (
@@ -182,12 +203,12 @@ export function AdminClient({ locale }: { locale: string }) {
               <div className="text-sm text-zinc-600 dark:text-zinc-300">
                 {t("admin.queueLoginRequired")}
               </div>
-            ) : requests.length === 0 ? (
+            ) : queued.length === 0 ? (
               <div className="text-sm text-zinc-600 dark:text-zinc-300">
                 {t("admin.queueEmptyHint")}
               </div>
             ) : (
-              requests.map((r) => (
+              queued.map((r) => (
                 <div
                   key={r.id}
                   className="rounded-2xl border border-black/10 p-3 dark:border-white/10 sm:p-4"
@@ -219,6 +240,70 @@ export function AdminClient({ locale }: { locale: string }) {
                       >
                         {t("admin.markPlayed")}
                       </button>
+                      <button
+                        onClick={() => void act(r.id, "remove")}
+                        className="h-8 rounded-full border border-black/10 px-3 text-[11px] font-medium text-zinc-800 hover:bg-zinc-50 dark:border-white/15 dark:text-zinc-100 dark:hover:bg-white/10"
+                      >
+                        {t("admin.remove")}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-black/10 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-zinc-950">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+              {t("admin.playedTitle")}
+            </h2>
+            <button
+              onClick={() => void clearPlayed()}
+              disabled={!isAuthed || clearingPlayed}
+              className="h-9 rounded-full border border-black/10 px-3 text-xs font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-60 dark:border-white/15 dark:text-zinc-100 dark:hover:bg-white/10"
+            >
+              {clearingPlayed ? t("admin.clearingPlayed") : t("admin.clearPlayed")}
+            </button>
+          </div>
+
+          <div className="mt-4 flex flex-col gap-3">
+            {!isAuthed ? (
+              <div className="text-sm text-zinc-600 dark:text-zinc-300">
+                {t("admin.queueLoginRequired")}
+              </div>
+            ) : played.length === 0 ? (
+              <div className="text-sm text-zinc-600 dark:text-zinc-300">
+                {t("queue.emptyPlayed")}
+              </div>
+            ) : (
+              played.map((r) => (
+                <div
+                  key={r.id}
+                  className="rounded-2xl border border-black/10 p-3 dark:border-white/10 sm:p-4"
+                >
+                  <div className="flex items-start gap-3">
+                    <QueueCover url={r.song.coverUrl ?? ""} title={r.song.title} />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                        {r.song.title}
+                      </div>
+                      <div className="truncate text-xs text-zinc-600 dark:text-zinc-300">
+                        {r.song.artist}
+                        {r.song.album ? ` · ${r.song.album}` : ""}
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+                        <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-zinc-700 dark:bg-white/10 dark:text-zinc-200">
+                          {r.user?.name ?? t("admin.anonymous")}
+                          {r.user?.role
+                            ? ` · ${r.user.role === "teacher" ? t("admin.roleTeacher") : t("admin.roleStudent")}`
+                            : ""}
+                        </span>
+                        <span>{new Date(r.createdAt).toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
                       <button
                         onClick={() => void act(r.id, "remove")}
                         className="h-8 rounded-full border border-black/10 px-3 text-[11px] font-medium text-zinc-800 hover:bg-zinc-50 dark:border-white/15 dark:text-zinc-100 dark:hover:bg-white/10"

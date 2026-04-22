@@ -10,8 +10,14 @@ const USER_COOKIE = "sr_user_id";
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const rawScope = url.searchParams.get("scope") ?? "mine";
-  const scope: "all" | "mine" | "public" =
-    rawScope === "all" ? "all" : rawScope === "public" ? "public" : "mine";
+  const scope: "admin" | "all" | "mine" | "public" =
+    rawScope === "admin"
+      ? "admin"
+      : rawScope === "all"
+        ? "all"
+        : rawScope === "public"
+          ? "public"
+          : "mine";
 
   const cookieStore = await cookies();
   const userId = cookieStore.get(USER_COOKIE)?.value ?? null;
@@ -65,6 +71,45 @@ export async function GET(req: Request) {
         id: r.id,
         status: r.status,
         createdAt: r.createdAt,
+        song: r.song,
+      })),
+    });
+  }
+
+  if (scope === "admin") {
+    const isAdmin = await verifyAdminSession();
+    if (!isAdmin) {
+      return NextResponse.json({ error: "access_denied" }, { status: 403 });
+    }
+
+    const [queued, played] = await Promise.all([
+      prisma.request.findMany({
+        where: { status: "queued" },
+        orderBy: { createdAt: "asc" },
+        take: 200,
+        include: { song: true, user: true },
+      }),
+      prisma.request.findMany({
+        where: { status: "played" },
+        orderBy: { createdAt: "desc" },
+        take: 200,
+        include: { song: true, user: true },
+      }),
+    ]);
+
+    return NextResponse.json({
+      queued: queued.map((r) => ({
+        id: r.id,
+        status: r.status,
+        createdAt: r.createdAt,
+        user: { id: r.userId, role: r.user.role, name: r.user.name ?? null },
+        song: r.song,
+      })),
+      played: played.map((r) => ({
+        id: r.id,
+        status: r.status,
+        createdAt: r.createdAt,
+        user: { id: r.userId, role: r.user.role, name: r.user.name ?? null },
         song: r.song,
       })),
     });
