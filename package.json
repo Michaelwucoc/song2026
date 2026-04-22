@@ -6,7 +6,7 @@
     "dev": "next dev",
     "dev:up": "./scripts/dev-up.sh",
     "build": "next build",
-    "start": "next start",
+    "start": "bash -lc 'set -a; [ -f .env ] && . ./.env; [ -f .env.local ] && . ./.env.local; set +a; exec next start -p \"${PORT:-3000}\" -H \"${HOSTNAME:-0.0.0.0}\"'",
     "lint": "eslint",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
