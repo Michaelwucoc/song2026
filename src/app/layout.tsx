@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "International Song Request",
-  description: "International school song request platform",
+  title: "Song Request v2026",
+  description: "International school song request platform - SHBS Ver 2026",
 };
 
 export default function RootLayout({
